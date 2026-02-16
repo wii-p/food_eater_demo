@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>PetitComputer4 to JS Port</title>
+    <style>
+        canvas { background: #000; display: block; margin: 0 auto; }
+        body { background: #222; color: #fff; font-family: monospace; text-align: center; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="status"></div>
+
+<script>
+/**
+ * プチコン4 SmileBASIC 移植版プログラム
+ */
+
+const SCREEN_W = 400;
+const SCREEN_H = 240;
+const FOOD_NUM = 128;
+const FOOD_KIND = 18;
+const KCAL_PER_FOOD = 200;
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = SCREEN_W;
+canvas.height = SCREEN_H;
+
+// ゲーム状態
+let player = { x: SCREEN_W / 2, y: SCREEN_H / 2, area: 0, target: null };
+let foods = [];
+let eatedCount = 0;
+let totalKcal = 0;
+let isMoving = false;
+let gameOver = false;
+
+// 初期化: エサの配置 (FOR FOODSP=1 TO #FOOD_NUM に相当)
+function init() {
+    for (let i = 0; i < FOOD_NUM; i++) {
+        let fx, fy, collision;
+        do {
+            collision = false;
+            fx = 8 + Math.random() * (SCREEN_W - 16);
+            fy = 8 + Math.random() * (SCREEN_H - 16);
+            
+            // 簡易的な重なりチェック (SPHITSPに相当)
+            for (let f of foods) {
+                let d = Math.hypot(f.x - fx, f.y - fy);
+                if (d < 8) { collision = true; break; }
+            }
+        } while (collision);
+        
+        foods.push({ x: fx, y: fy, color: `hsl(${(i % FOOD_KIND) * (360/FOOD_KIND)}, 70%, 60%)`, active: true });
+    }
+}
+
+// --- 変更箇所を反映した update 関数 ---
+
+function update() {
+    if (gameOver) return;
+
+    if (!isMoving) {
+        // 索敵処理
+        let foundIndex = -1;
+        for (let i = 0; i < foods.length; i++) {
+            let f = foods[i];
+            if (!f.active) continue;
+
+            let dist = Math.hypot(f.x - player.x, f.y - player.y);
+            if (dist < (8 + player.area)) {
+                foundIndex = i;
+                break;
+            }
+        }
+
+        if (foundIndex !== -1) {
+            player.target = foods[foundIndex];
+            player.targetIndex = foundIndex;
+            isMoving = true;
+        } else {
+            // 索敵範囲の拡大速度もアップ (0.5 -> 5.0)
+            player.area += 5.0; 
+        }
+    } else {
+        // 移動処理 (10倍速設定)
+        let dx = player.target.x - player.x;
+        let dy = player.target.y - player.y;
+        let dist = Math.hypot(dx, dy);
+
+        // 速度定数: ここを大きくするとさらに速くなります
+        let speed = 40; 
+
+        if (dist <= speed) {
+            // 目的地にほぼ到着
+            player.x = player.target.x;
+            player.y = player.target.y;
+            player.target.active = false;
+            
+            eatedCount++;
+            totalKcal += KCAL_PER_FOOD;
+            player.area = 0;
+            isMoving = false;
+
+            if (eatedCount >= FOOD_NUM) {
+                gameOver = true;
+            }
+        } else {
+            // 1フレームあたり40ピクセル移動 (dx, dy を正規化して速度を掛ける)
+            player.x += (dx / dist) * speed;
+            player.y += (dy / dist) * speed;
+        }
+    }
+}
+
+
+function draw() {
+    ctx.clearRect(0, 0, SCREEN_W, SCREEN_H);
+
+    // エサの描画
+    foods.forEach(f => {
+        if (!f.active) return;
+        ctx.fillStyle = f.color;
+        ctx.fillRect(f.x - 4, f.y - 4, 8, 8);
+    });
+
+    // 索敵範囲の描画 (可視化)
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.area + 8, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // プレイヤーの描画 (SPSET MYSP, 4540)
+    ctx.fillStyle = gameOver ? "#ff0" : "#0af";
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ステータス表示
+    if (gameOver) {
+        ctx.fillStyle = "#fff";
+        ctx.font = "16px monospace";
+        ctx.fillText("ごちそうサマンサ", player.x - 50, player.y - 20);
+        document.getElementById('status').innerHTML = 
+            `総摂取カロリー：${totalKcal} kcal`;
+    }
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+init();
+loop();
+</script>
+</body>
+</html>
